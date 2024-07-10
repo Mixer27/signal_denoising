@@ -34,6 +34,48 @@ def plot_signal(signal, title, sampling_rate=None):
     except Exception as e:
         messagebox.showerror("Błąd wyświetlania wykresu", str(e))
 
+
+def calculate_mu(N, mu_min=0.005, mu_max=0.1, N_min=100, N_max=1000):
+    if N <= N_min:
+        return mu_max
+    elif N >= N_max:
+        return mu_min
+    else:
+        mu_range = np.log(mu_max / mu_min)
+        N_range = np.log(N_max / N_min)
+        return mu_max * np.exp(-mu_range * (np.log(N / N_min) / N_range))
+
+def nlms_filter(x, filter_order=4, epsilon=1e-6):
+    N = len(x)
+    mu = calculate_mu(N)
+    w = np.zeros(filter_order)
+    y = np.zeros(N)
+    e = np.zeros(N)
+    for n in range(filter_order, N):
+        x_n = x[n:n-filter_order:-1]
+        norm_x = np.dot(x_n, x_n) + epsilon
+        y[n] = np.dot(w, x_n)
+        e[n] = x[n] - y[n]
+        w += (2 * mu * e[n] * x_n) / norm_x
+    return y, e
+
+
+def wiener_filter(signal, mysize=None, noise=None):
+    if mysize is None:
+        mysize = 3
+    
+    signal = np.asarray(signal)
+    if noise is None:
+        noise = np.var(signal)
+    
+    local_mean = np.convolve(signal, np.ones(mysize)/mysize, mode='same')
+    
+    local_var = np.convolve(signal**2, np.ones(mysize)/mysize, mode='same') - local_mean**2
+    
+    wiener_output = local_mean + (np.maximum(local_var - noise, 0) / np.maximum(local_var, noise)) * (signal - local_mean)
+    
+    return wiener_output
+
 class SignalDenoiserApp:
     def __init__(self, root):
         self.root = root
@@ -59,7 +101,7 @@ class SignalDenoiserApp:
         Button(root, text="Wyświetl sygnał", command=self.display_signal).grid(row=3, column=0, columnspan=3, padx=10, pady=10)
         
         Label(root, text="Metoda odszumiania:").grid(row=4, column=0, padx=10, pady=5)
-        OptionMenu(root, self.method, "NLMS", "Wavelet").grid(row=4, column=1, padx=10, pady=5)
+        OptionMenu(root, self.method, "NLMS", "Wiener").grid(row=4, column=1, padx=10, pady=5)
         
         Button(root, text="Wykonaj odszumianie", command=self.denoise_signal).grid(row=5, column=0, columnspan=3, padx=10, pady=10)
         
@@ -85,6 +127,12 @@ class SignalDenoiserApp:
     
     def denoise_signal(self):
         if self.signal is not None:
+            x = self.signal.flatten()
+            if self.method.get() == "NLMS":
+                y, _ = nlms_filter(x)
+            else:
+                y = wiener_filter(x)
+            self.filtered_signal = y
             messagebox.showinfo("Odszumianie", "Odszumianie zakończone pomyślnie!")
         else:
             messagebox.showerror("Błąd", "Nie wczytano sygnału.")
