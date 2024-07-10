@@ -35,7 +35,7 @@ def plot_signal(signal, title, sampling_rate=None):
         messagebox.showerror("Błąd wyświetlania wykresu", str(e))
 
 
-def calculate_mu(N, mu_min=0.005, mu_max=0.1, N_min=100, N_max=1000):
+def calculate_learning_rate(N, mu_min=0.005, mu_max=0.1, N_min=100, N_max=1000):
     if N <= N_min:
         return mu_max
     elif N >= N_max:
@@ -45,20 +45,19 @@ def calculate_mu(N, mu_min=0.005, mu_max=0.1, N_min=100, N_max=1000):
         N_range = np.log(N_max / N_min)
         return mu_max * np.exp(-mu_range * (np.log(N / N_min) / N_range))
 
-def nlms_filter(x, filter_order=4, epsilon=1e-6):
-    N = len(x)
-    mu = calculate_mu(N)
+def nlms_filter(signal, filter_order=4, epsilon=1e-6):
+    N = len(signal)
+    learning_rate = calculate_learning_rate(N)
     w = np.zeros(filter_order)
-    y = np.zeros(N)
-    e = np.zeros(N)
+    output_signal = np.zeros(N)
+    errors = np.zeros(N)
     for n in range(filter_order, N):
-        x_n = x[n:n-filter_order:-1]
+        x_n = signal[n:n-filter_order:-1]
         norm_x = np.dot(x_n, x_n) + epsilon
-        y[n] = np.dot(w, x_n)
-        e[n] = x[n] - y[n]
-        w += (2 * mu * e[n] * x_n) / norm_x
-    return y, e
-
+        output_signal[n] = np.dot(w, x_n)
+        errors[n] = signal[n] - output_signal[n]
+        w += (2 * learning_rate * errors[n] * x_n) / norm_x
+    return output_signal
 
 def wiener_filter(signal, mysize=None, noise=None):
     if mysize is None:
@@ -72,9 +71,9 @@ def wiener_filter(signal, mysize=None, noise=None):
     
     local_var = np.convolve(signal**2, np.ones(mysize)/mysize, mode='same') - local_mean**2
     
-    wiener_output = local_mean + (np.maximum(local_var - noise, 0) / np.maximum(local_var, noise)) * (signal - local_mean)
+    output_signal = local_mean + (np.maximum(local_var - noise, 0) / np.maximum(local_var, noise)) * (signal - local_mean)
     
-    return wiener_output
+    return output_signal
 
 class SignalDenoiserApp:
     def __init__(self, root):
@@ -129,7 +128,7 @@ class SignalDenoiserApp:
         if self.signal is not None:
             x = self.signal.flatten()
             if self.method.get() == "NLMS":
-                y, _ = nlms_filter(x)
+                y = nlms_filter(x)
             else:
                 y = wiener_filter(x)
             self.filtered_signal = y
